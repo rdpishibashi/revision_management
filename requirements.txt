@@ -1,5 +1,6 @@
-streamlit
-pandas
-graphviz
-openpyxl
-unicodedata # 全角変換のためにインポート
+streamlit>=1.30.0
+ezdxf>=1.4.2
+pandas>=1.5.0,<2.0.0
+xsxwriter>=3.0.0
+openpyxl>=3.0.0
+numpy>=1.21.0,<1.25.0
