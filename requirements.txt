@@ -1,0 +1,5 @@
+streamlit
+pandas
+graphviz
+openpyxl
+unicodedata # 全角変換のためにインポート
