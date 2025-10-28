@@ -1,6 +1,0 @@
-streamlit>=1.30.0
-ezdxf>=1.4.2
-pandas>=1.5.3
-xsxwriter>=3.0.0
-openpyxl>=3.0.0
-numpy>=1.24.0
