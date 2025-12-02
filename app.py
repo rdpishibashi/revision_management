@@ -8,11 +8,11 @@ st.set_page_config(layout="wide")
 
 # アプリケーションのタイトルを設定
 st.title("親子関係グラフ")
-st.write("Excelファイル (.xlsx) をアップロードして、親子関係グラフを表示します。")
+st.write("親子関係台帳をアップロードして親子関係グラフを表示します。")
 
 # 1. ファイルアップローダーの設置
 uploaded_file = st.file_uploader(
-    "Excelファイル (.xlsx) をここにドラッグ＆ドロップするか、クリックして選択してください",
+    "親子関係台帳Excelファイル (.xlsx) をここにドラッグ＆ドロップするか、クリックして選択してください",
     type=["xlsx"]
 )
 
@@ -56,7 +56,7 @@ def load_data(file_object):
         return df
     except Exception as e:
         st.error(f"データの読み込み中にエラーが発生しました: {e}")
-        st.info("Excelファイルのシート名が 'Sheet1' であること、または必要なカラム名 ('Child', 'Parent') が正確であることを確認してください。また、C列以降のタイトル名も確認してください。")
+        st.info("Excelファイルの必要なカラム名 ('Child', 'Parent') が正確であることを確認してください。また、C列以降のタイトル名も確認してください。")
         return pd.DataFrame()
 
 # ファイルがアップロードされた場合のみ処理を実行
@@ -64,7 +64,7 @@ if uploaded_file is not None:
     data = load_data(uploaded_file)
 
     if not data.empty:
-        st.write("### 全体図")
+        st.write("### 親子関係グラフ")
 
         # Graphvizのグラフオブジェクトを作成
         # format='pdf' に変更してPDF出力を指定
@@ -193,7 +193,7 @@ if uploaded_file is not None:
 
 
         # 台帳データをグラフの下に移動し、expanderで折りたたみ可能にする
-        with st.expander("### 親子関係台帳データを見る (クリックで開閉)"):
+        with st.expander("### 親子関係台帳データを見る（クリックで開閉）"):
             st.dataframe(data)
         
         st.write("---")
@@ -202,4 +202,4 @@ if uploaded_file is not None:
         st.warning("アップロードされたファイルからデータを読み込めませんでした。")
 
 else:
-    st.info("Excelファイルをアップロードすると、親子関係グラフが表示されます。")
+    st.info("親子関係台帳（Excelファイル）をアップロードすると、親子関係グラフを表示します。")
