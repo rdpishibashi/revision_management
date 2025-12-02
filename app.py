@@ -15,7 +15,7 @@ from utils.graph_builder import GraphBuilder
 st.set_page_config(layout="wide")
 
 # サイドバーでグラフエンジンを選択
-st.sidebar.title("設定")
+st.sidebar.title("表示設定")
 graph_engine = st.sidebar.radio(
     "グラフ表示スタイル",
     options=["インタラクティブ", "固定表示・PDF出力"],
@@ -24,8 +24,8 @@ graph_engine = st.sidebar.radio(
 )
 
 # アプリケーションのタイトルを設定
-st.title("親子関係グラフ")
-st.write("親子関係台帳をアップロードして親子関係グラフを表示します。")
+st.title("図番親子関係グラフ")
+st.write("図番親子関係台帳をアップロードして図番の親子関係グラフを表示します。")
 
 # エンジンに応じた説明を表示
 if graph_engine == "インタラクティブ":
@@ -35,7 +35,7 @@ else:
 
 # 1. ファイルアップローダーの設置
 uploaded_file = st.file_uploader(
-    "親子関係台帳Excelファイル (.xlsx) をここにドラッグ＆ドロップするか、クリックして選択してください",
+    "図番親子関係台帳Excelファイル (.xlsx) をここにドラッグ＆ドロップするか、クリックして選択してください",
     type=["xlsx"]
 )
 
@@ -90,7 +90,7 @@ def load_data(file_object):
 
 def render_graphviz(data):
     """Graphvizを使用してグラフを描画"""
-    st.write("### 親子関係グラフ")
+    st.write("### 図番親子関係グラフ（固定画像）")
 
     # Graphvizのグラフオブジェクトを作成
     dot = graphviz.Digraph(comment='Family Tree', format='pdf', graph_attr={'rankdir': 'TB'})
@@ -144,7 +144,7 @@ def render_graphviz(data):
 
         # PDFダウンロードボタンをグラフの下に配置
         st.write("---")
-        st.write("#### 親子関係グラフをPDFでダウンロード")
+        st.write("#### 図番親子関係グラフをPDFでダウンロード")
         st.info("PDFは拡大しても鮮明な表示が可能です。")
 
         try:
@@ -177,7 +177,7 @@ def render_graphviz(data):
 
 def render_pyvis(data):
     """Pyvisを使用してインタラクティブなグラフを描画"""
-    st.write("### 親子関係グラフ（インタラクティブ）")
+    st.write("### 図番親子関係グラフ（インタラクティブ）")
 
     # Use GraphBuilder to extract common logic
     dynamic_cols_for_display = [col for col in data.columns if col not in ['Child', 'Parent']]
@@ -269,7 +269,7 @@ if uploaded_file is not None:
             render_graphviz(data)
 
         # 台帳データをグラフの下に移動し、expanderで折りたたみ可能にする
-        with st.expander("### 親子関係台帳データを見る（クリックで開閉）"):
+        with st.expander("### 図番親子関係台帳データを見る（クリックで開閉）"):
             st.dataframe(data)
 
         st.write("---")
@@ -278,4 +278,4 @@ if uploaded_file is not None:
         st.warning("アップロードされたファイルからデータを読み込めませんでした。")
 
 else:
-    st.info("親子関係台帳（Excelファイル）をアップロードすると、親子関係グラフを表示します。")
+    st.info("図番親子関係台帳（Excelファイル）をアップロードすると、図番親子関係グラフを表示します。")
