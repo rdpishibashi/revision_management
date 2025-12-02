@@ -113,9 +113,7 @@ if uploaded_file is not None:
         for root_node in root_nodes:
             if root_node in node_dynamic_details:
                 node_dynamic_details[root_node] = {
-                    'Relation': 'ROOT',
-                    'Title': '',
-                    'Subtitle': ''
+                    'Relation': 'ROOT'
                 }
 
         NODE_FILL_COLOR = '#F0F8FF' # AliceBlue (デフォルト)
@@ -131,16 +129,12 @@ if uploaded_file is not None:
                 <TR><TD ALIGN="CENTER"><B><FONT POINT-SIZE="20">{full_width_drawing_id}</FONT></B></TD></TR>
             '''
 
-            # Rootノードの場合は、Relation、Title、Subtitleのみ表示
+            # Rootノードの場合は、Relationのみ表示
             if drawing_id in root_nodes:
                 relation_value = details.get('Relation', 'ROOT')
-                title_value = details.get('Title', '')
-                subtitle_value = details.get('Subtitle', '')
 
                 label_html += f'''
                 <TR><TD ALIGN="CENTER" COLSPAN="2"><FONT POINT-SIZE="10">Relation: {relation_value}</FONT></TD></TR>
-                <TR><TD ALIGN="CENTER" COLSPAN="2"><FONT POINT-SIZE="10">Title: {title_value}</FONT></TD></TR>
-                <TR><TD ALIGN="CENTER" COLSPAN="2"><FONT POINT-SIZE="10">Subtitle: {subtitle_value}</FONT></TD></TR>
                 '''
             else:
                 # 通常のノードの場合、全ての属性を表示
