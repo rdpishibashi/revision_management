@@ -6,6 +6,7 @@ from pyvis.network import Network
 import streamlit.components.v1 as components
 import tempfile
 import os
+import platform
 
 # Import custom utilities
 from utils.formatters import format_hover_text
@@ -13,6 +14,24 @@ from utils.graph_builder import GraphBuilder
 
 # ページのレイアウトをワイドに設定
 st.set_page_config(layout="wide")
+
+# 日本語フォントを取得する関数
+def get_japanese_font():
+    """
+    システムに応じて利用可能な日本語フォントを返す
+    """
+    system = platform.system()
+
+    if system == 'Darwin':  # macOS
+        return 'Hiragino Sans'
+    elif system == 'Windows':
+        return 'MS Gothic'
+    else:  # Linux
+        # Try common Linux fonts
+        return 'Noto Sans CJK JP'
+
+# 日本語フォント名を取得
+JAPANESE_FONT = get_japanese_font()
 
 # サイドバーでグラフエンジンを選択
 st.sidebar.title("表示設定")
@@ -93,7 +112,21 @@ def render_graphviz(data):
     st.write("### 図番親子関係グラフ（固定画像）")
 
     # Graphvizのグラフオブジェクトを作成
-    dot = graphviz.Digraph(comment='Family Tree', format='pdf', graph_attr={'rankdir': 'TB'})
+    # 日本語表示のためにフォントを指定
+    dot = graphviz.Digraph(
+        comment='Family Tree',
+        format='pdf',
+        graph_attr={
+            'rankdir': 'TB',
+            'fontname': JAPANESE_FONT
+        },
+        node_attr={
+            'fontname': JAPANESE_FONT
+        },
+        edge_attr={
+            'fontname': JAPANESE_FONT
+        }
+    )
 
     # Use GraphBuilder to extract common logic
     dynamic_cols_for_display = [col for col in data.columns if col not in ['Child', 'Parent']]
