@@ -19,6 +19,7 @@ st.set_page_config(layout="wide")
 def get_japanese_font():
     """
     システムに応じて利用可能な日本語フォントを返す
+    Streamlit Cloud (Linux) 用に複数のフォールバック設定
     """
     system = platform.system()
 
@@ -26,9 +27,19 @@ def get_japanese_font():
         return 'Hiragino Sans'
     elif system == 'Windows':
         return 'MS Gothic'
-    else:  # Linux
-        # Try common Linux fonts
-        return 'Noto Sans CJK JP'
+    else:  # Linux (including Streamlit Cloud)
+        # Streamlit Cloud uses Debian/Ubuntu
+        # fonts-noto-cjk package provides these fonts
+        # Try multiple font names as fallback
+        linux_fonts = [
+            'Noto Sans CJK JP',
+            'Noto Sans JP',
+            'IPAGothic',
+            'VL Gothic',
+            'DejaVu Sans'  # Fallback (doesn't support Japanese well, but won't crash)
+        ]
+        # Return first font (will be installed via packages.txt)
+        return linux_fonts[0]
 
 # 日本語フォント名を取得
 JAPANESE_FONT = get_japanese_font()
@@ -41,6 +52,11 @@ graph_engine = st.sidebar.radio(
     index=0,
     help="インタラクティブはズーム・パン・ドラッグ可能、固定表示はPDF出力可能"
 )
+
+# デバッグ情報（フォント設定を表示）
+with st.sidebar.expander("ℹ️ システム情報", expanded=False):
+    st.text(f"OS: {platform.system()}")
+    st.text(f"使用フォント: {JAPANESE_FONT}")
 
 # アプリケーションのタイトルを設定
 st.title("図番親子関係グラフ")
