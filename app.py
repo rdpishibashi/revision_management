@@ -10,7 +10,7 @@ import platform
 
 # Import custom utilities
 from utils.formatters import format_hover_text
-from utils.graph_builder import GraphBuilder
+from utils.graph_builder import GraphBuilder, normalize_parent_value, find_search_component_nodes, compute_edge_curvature
 
 # ページのレイアウトをワイドに設定
 st.set_page_config(layout="wide")
@@ -51,6 +51,13 @@ graph_engine = st.sidebar.radio(
     options=["インタラクティブ", "固定表示・PDF出力"],
     index=0,
     help="インタラクティブはズーム・パン・ドラッグ可能、固定表示はPDF出力可能"
+)
+
+# 図番検索（部分一致）：入力に一致する図番が属するツリーのみ表示する
+search_query = st.sidebar.text_input(
+    "図番検索（Child / Parent）",
+    value="",
+    help="入力した文字列を含む図番が属するツリーのみを表示します（部分一致・大文字小文字を区別しません）。空欄の場合は全体を表示します。"
 )
 
 # デバッグ情報（フォント設定を表示）
@@ -115,6 +122,12 @@ def load_data(file_object):
         # 全ての列を文字列型に変換してArrow変換エラーを防ぐ
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip()
+
+        # Parent列の「親なし」を意味するプレースホルダー文字列（"None"等、大文字小文字問わず）を
+        # 空文字列に正規化する。空文字列にすることで、GraphBuilderはこの図面を独立したノードとして
+        # 扱う（共有の"None"ノードにぶら下がる誤った表示を防ぐ）。
+        if 'Parent' in df.columns:
+            df['Parent'] = df['Parent'].apply(normalize_parent_value)
 
         return df
     except Exception as e:
@@ -181,9 +194,9 @@ def render_graphviz(data):
 
         dot.node(drawing_id, label=label_html, shape='box', style='filled', fillcolor=fill_color)
 
-    # Add edges using GraphBuilder
-    for parent, child in builder.get_edges():
-        dot.edge(parent, child)
+    # Add edges using GraphBuilder（推測RevUpエッジは破線で表示）
+    for parent, child, is_dashed in builder.get_edges():
+        dot.edge(parent, child, style='dashed' if is_dashed else 'solid')
 
     # グラフを中央に表示するためにカラムを使用
     col1, col2, col3 = st.columns([1, 6, 1])
@@ -258,9 +271,11 @@ def render_pyvis(data):
             font={'size': 20}
         )
 
-    # Add edges using GraphBuilder
-    for parent, child in builder.get_edges():
-        net.add_edge(parent, child)
+    # Add edges using GraphBuilder（推測RevUpエッジは破線で表示）
+    # 同じ親から出る複数エッジは左右交互に湾曲を強めてファン状にし、
+    # 縦一直線に並ぶRevUpチェーンでのエッジ重なりを防ぐ
+    for parent, child, is_dashed, smooth_options in compute_edge_curvature(builder.get_edges()):
+        net.add_edge(parent, child, dashes=is_dashed, smooth=smooth_options)
 
     # 階層的レイアウトを設定
     net.set_options("""
@@ -311,15 +326,30 @@ if uploaded_file is not None:
     data = load_data(uploaded_file)
 
     if not data.empty:
-        # 選択されたエンジンに応じてグラフを描画
-        if graph_engine == "インタラクティブ":
-            render_pyvis(data)
-        else:
-            render_graphviz(data)
+        # 図番検索が入力されている場合、該当図番が属するツリー（連結成分）だけに絞り込む
+        if search_query.strip():
+            dynamic_cols_for_search = [col for col in data.columns if col not in ['Child', 'Parent']]
+            search_builder = GraphBuilder(data, dynamic_cols_for_search)
+            search_builder.build()
+            all_nodes = search_builder.all_children | search_builder.all_parents
+            keep_nodes = find_search_component_nodes(all_nodes, search_builder.get_edges(), search_query)
 
-        # 台帳データをグラフの下に移動し、expanderで折りたたみ可能にする
-        with st.expander("### 図番親子関係台帳データを見る（クリックで開閉）"):
-            st.dataframe(data)
+            if not keep_nodes:
+                st.warning(f"「{search_query}」に一致する図番が見つかりませんでした。")
+                data = data.iloc[0:0]  # 空にしてグラフ・台帳データ表示をスキップ
+            else:
+                data = data[data['Child'].isin(keep_nodes)]
+
+        if not data.empty:
+            # 選択されたエンジンに応じてグラフを描画
+            if graph_engine == "インタラクティブ":
+                render_pyvis(data)
+            else:
+                render_graphviz(data)
+
+            # 台帳データをグラフの下に移動し、expanderで折りたたみ可能にする
+            with st.expander("### 図番親子関係台帳データを見る（クリックで開閉）"):
+                st.dataframe(data)
 
         st.write("---")
 
