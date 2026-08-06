@@ -13,6 +13,9 @@ from utils.graph_builder import (
     normalize_parent_value,
     find_search_component_nodes,
     compute_edge_curvature,
+    BASE_EDGE_ROUNDNESS,
+    EDGE_ROUNDNESS_STEP,
+    MAX_EDGE_ROUNDNESS,
 )
 
 
@@ -156,6 +159,81 @@ class TestInferredRevUpEdgesAreDashed:
         assert ('EE5000-001-01A', 'EE5000-001-01B', True) in edges
 
 
+class TestGetNodeColor:
+    """get_node_color(): ノードへの入力エッジの種類（流用/RevUp）の組み合わせで色を決める。
+    入力エッジなし(ROOT/独立新規ノード)=白、流用のみ=light green、RevUpのみ=light blue、
+    両方=light yellow。"""
+
+    def test_root_placeholder_node_is_white(self):
+        rows = [
+            {'Child': 'EE2000-001-01A', 'Parent': 'EE1000-001-01A', 'Relation': '流用'},
+        ]
+        builder, node_details, root_nodes = build(rows)
+        assert 'EE1000-001-01A' in root_nodes
+        assert builder.get_node_color('EE1000-001-01A') == GraphBuilder.ROOT_COLOR
+
+    def test_independent_new_drawing_with_no_incoming_edge_is_white(self):
+        rows = [
+            {'Child': 'EE1000-001-01A', 'Parent': '', 'Relation': '完全新規図面'},
+        ]
+        builder, _, _ = build(rows)
+        assert builder.get_node_color('EE1000-001-01A') == GraphBuilder.ROOT_COLOR
+
+    def test_reuse_only_incoming_edge_is_light_green(self):
+        rows = [
+            {'Child': 'EE2000-001-01A', 'Parent': 'EE1000-001-01A', 'Relation': '流用'},
+        ]
+        builder, _, _ = build(rows)
+        assert builder.get_node_color('EE2000-001-01A') == GraphBuilder.REUSE_COLOR
+
+    def test_explicit_revup_only_incoming_edge_is_light_blue(self):
+        rows = [
+            {'Child': 'EE1000-001-01B', 'Parent': 'EE1000-001-01A', 'Relation': 'RevUp'},
+        ]
+        builder, _, _ = build(rows)
+        assert builder.get_node_color('EE1000-001-01B') == GraphBuilder.REVUP_COLOR
+
+    def test_inferred_dashed_revup_only_incoming_edge_is_light_blue(self):
+        # A, C exist as nodes (no explicit row between them) -> inferred dashed A->C
+        rows = [
+            {'Child': 'EE1000-001-01A', 'Parent': 'EE9999-999-99Z', 'Relation': '流用'},
+            {'Child': 'EE8888-888-88Y', 'Parent': 'EE1000-001-01C', 'Relation': '流用'},
+        ]
+        builder, _, _ = build(rows)
+        assert builder.get_node_color('EE1000-001-01C') == GraphBuilder.REVUP_COLOR
+
+    def test_reuse_and_explicit_revup_both_incoming_is_light_yellow(self):
+        # Same node receives an explicit 流用 edge from one parent and an
+        # explicit RevUp edge from a different parent.
+        rows = [
+            {'Child': 'EE1000-001-01B', 'Parent': 'EE9999-999-99Z', 'Relation': '流用'},
+            {'Child': 'EE1000-001-01B', 'Parent': 'EE1000-001-01A', 'Relation': 'RevUp'},
+        ]
+        df = pd.DataFrame(rows)
+        builder = GraphBuilder(df, ['Relation'])
+        builder.build()
+        assert builder.get_node_color('EE1000-001-01B') == GraphBuilder.BOTH_COLOR
+
+    def test_reuse_and_inferred_revup_both_incoming_is_light_yellow(self):
+        # OVERVIEW.md example: 34C has an explicit 流用 edge from 26D, and
+        # (with 34B absent) an inferred dashed RevUp edge from 34A.
+        rows = [
+            {'Child': 'EE3273-608-34A', 'Parent': 'EE3273-608-26D', 'Relation': '流用'},
+            {'Child': 'EE3273-608-34C', 'Parent': 'EE3273-608-26D', 'Relation': '流用'},
+        ]
+        builder, _, _ = build(rows)
+        edges = builder.get_edges()
+        assert ('EE3273-608-34A', 'EE3273-608-34C', True) in edges  # 前提確認
+        assert builder.get_node_color('EE3273-608-34C') == GraphBuilder.BOTH_COLOR
+
+    def test_unknown_node_id_defaults_to_root_color(self):
+        rows = [
+            {'Child': 'EE2000-001-01A', 'Parent': 'EE1000-001-01A', 'Relation': '流用'},
+        ]
+        builder, _, _ = build(rows)
+        assert builder.get_node_color('EE9999-999-99Z') == GraphBuilder.ROOT_COLOR
+
+
 class TestFindSearchComponentNodes:
     """find_search_component_nodes(): 図番検索によるツリー（連結成分）絞り込み"""
 
@@ -242,7 +320,7 @@ class TestComputeEdgeCurvature:
     def test_single_edge_gets_base_curvature(self):
         edges = [('A', 'B', False)]
         result = compute_edge_curvature(edges)
-        assert result == [('A', 'B', False, {'enabled': True, 'type': 'curvedCW', 'roundness': 0.15})]
+        assert result == [('A', 'B', False, {'enabled': True, 'type': 'curvedCW', 'roundness': BASE_EDGE_ROUNDNESS})]
 
     def test_multiple_edges_from_same_source_alternate_direction_and_increase_roundness(self):
         edges = [
@@ -256,12 +334,15 @@ class TestComputeEdgeCurvature:
         roundness = [r[3]['roundness'] for r in result]
 
         assert types == ['curvedCW', 'curvedCCW', 'curvedCW', 'curvedCCW']
-        assert roundness == [0.15, 0.15, 0.27, 0.27]
+        assert roundness == [
+            BASE_EDGE_ROUNDNESS, BASE_EDGE_ROUNDNESS,
+            BASE_EDGE_ROUNDNESS + EDGE_ROUNDNESS_STEP, BASE_EDGE_ROUNDNESS + EDGE_ROUNDNESS_STEP,
+        ]
 
     def test_roundness_is_capped(self):
         edges = [('P', f'child{i}', False) for i in range(20)]
         result = compute_edge_curvature(edges)
-        assert all(r[3]['roundness'] <= 0.6 for r in result)
+        assert all(r[3]['roundness'] <= MAX_EDGE_ROUNDNESS for r in result)
 
     def test_edges_from_different_sources_have_independent_counters(self):
         edges = [
@@ -270,8 +351,8 @@ class TestComputeEdgeCurvature:
         ]
         result = compute_edge_curvature(edges)
         # 異なる始点ならそれぞれ最初のエッジとして扱われる（インデックスが共有されない）
-        assert result[0][3] == {'enabled': True, 'type': 'curvedCW', 'roundness': 0.15}
-        assert result[1][3] == {'enabled': True, 'type': 'curvedCW', 'roundness': 0.15}
+        assert result[0][3] == {'enabled': True, 'type': 'curvedCW', 'roundness': BASE_EDGE_ROUNDNESS}
+        assert result[1][3] == {'enabled': True, 'type': 'curvedCW', 'roundness': BASE_EDGE_ROUNDNESS}
 
     def test_is_dashed_flag_is_preserved(self):
         edges = [('P', 'A', True)]
