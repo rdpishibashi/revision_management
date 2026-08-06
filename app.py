@@ -190,7 +190,7 @@ def render_graphviz(data):
         label_html += '</TABLE>>'
 
         # Use GraphBuilder to determine node color
-        fill_color = builder.get_node_color(details)
+        fill_color = builder.get_node_color(drawing_id)
 
         dot.node(drawing_id, label=label_html, shape='box', style='filled', fillcolor=fill_color)
 
@@ -259,7 +259,7 @@ def render_pyvis(data):
         title_html = format_hover_text(full_width_drawing_id, details, is_root, dynamic_cols_for_display)
 
         # Use GraphBuilder to determine node color
-        fill_color = builder.get_node_color(details)
+        fill_color = builder.get_node_color(drawing_id)
 
         # ノードを追加
         net.add_node(

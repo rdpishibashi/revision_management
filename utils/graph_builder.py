@@ -25,6 +25,11 @@ def normalize_parent_value(value):
     return value
 
 
+BASE_EDGE_ROUNDNESS = 0.2  # roundness of the first pair of edges from a shared source
+EDGE_ROUNDNESS_STEP = 0.18  # roundness added per additional pair of edges from that source
+MAX_EDGE_ROUNDNESS = 0.8  # cap, so edges don't curve into an unreadable loop
+
+
 def compute_edge_curvature(edges):
     """
     Assign per-edge curvature (vis-network 'smooth' options) so multiple edges
@@ -51,7 +56,7 @@ def compute_edge_curvature(edges):
         idx = edge_index_by_source[parent]
         edge_index_by_source[parent] += 1
         curve_type = 'curvedCW' if idx % 2 == 0 else 'curvedCCW'
-        roundness = min(0.15 + 0.12 * (idx // 2), 0.6)
+        roundness = min(BASE_EDGE_ROUNDNESS + EDGE_ROUNDNESS_STEP * (idx // 2), MAX_EDGE_ROUNDNESS)
         smooth_options = {'enabled': True, 'type': curve_type, 'roundness': roundness}
         result.append((parent, child, is_dashed, smooth_options))
     return result
@@ -114,8 +119,10 @@ class GraphBuilder:
     root nodes, and preparing data for graph visualization.
     """
 
-    NODE_FILL_COLOR = '#F0F8FF'  # AliceBlue (default)
-    RELATION_REUSE_COLOR = '#FFFFE0'  # LightYellow (for 流用)
+    ROOT_COLOR = '#FFFFFF'  # White (no incoming 流用/RevUp edge: ROOT node or independent new drawing)
+    REUSE_COLOR = '#C8F7C8'  # Lighter green (incoming 流用 edge only)
+    REVUP_COLOR = '#D6ECF3'  # Lighter blue (incoming RevUp edge only, explicit or inferred)
+    BOTH_COLOR = '#FFFFE0'  # LightYellow (both 流用 and RevUp incoming edges)
 
     def __init__(self, data, dynamic_cols_for_display):
         """
@@ -131,6 +138,7 @@ class GraphBuilder:
         self.all_children = set()
         self.all_parents = set()
         self.root_nodes = set()
+        self.incoming_relation_types = {}
 
     def build(self):
         """
@@ -143,6 +151,7 @@ class GraphBuilder:
         self._identify_root_nodes()
         self._build_node_details()
         self._set_root_node_attributes()
+        self.incoming_relation_types = self._compute_incoming_relation_types()
         return self.node_dynamic_details, self.root_nodes
 
     def _collect_nodes(self):
@@ -190,19 +199,58 @@ class GraphBuilder:
                     'Relation': 'ROOT'
                 }
 
-    def get_node_color(self, details):
+    def _compute_incoming_relation_types(self):
         """
-        Determine node color based on Relation attribute
+        Determine, for every node, which relation types its incoming edges
+        represent. A node with no incoming edge at all (ROOT placeholder node,
+        or an independent node whose own row has an empty Parent) has an empty
+        set. Inferred RevUp edges (dashed, from _infer_revision_up_edges())
+        always count as 'RevUp'. Explicit edges (solid) take their type from
+        that specific row's own Relation value ('流用' or 'RevUp'); any other
+        Relation value does not contribute a type. The per-row Relation is
+        looked up per (parent, child) pair rather than via the aggregated
+        node_dynamic_details, so a child with more than one explicit row is
+        still attributed correctly per edge.
+
+        Returns:
+            dict: node id -> set of relation type strings among {'流用', 'RevUp'}
+        """
+        row_relation_by_pair = {}
+        for index, row in self.data.iterrows():
+            child = str(row['Child']).strip()
+            parent = str(row['Parent']).strip()
+            if parent and child:
+                relation = str(row['Relation']).strip() if 'Relation' in row.index else ''
+                row_relation_by_pair[(parent, child)] = relation
+
+        types = defaultdict(set)
+        for parent, child, is_dashed in self.get_edges():
+            if is_dashed:
+                types[child].add('RevUp')
+            else:
+                relation = row_relation_by_pair.get((parent, child), '')
+                if relation in ('流用', 'RevUp'):
+                    types[child].add(relation)
+        return types
+
+    def get_node_color(self, node_id):
+        """
+        Determine node color based on the relation types of its incoming edges
 
         Args:
-            details: Dictionary of node attributes
+            node_id: Drawing number (node id) to determine the color for
 
         Returns:
             str: Hex color code
         """
-        if 'Relation' in details and details['Relation'] == '流用':
-            return self.RELATION_REUSE_COLOR
-        return self.NODE_FILL_COLOR
+        types = self.incoming_relation_types.get(node_id, set())
+        if types == {'流用', 'RevUp'}:
+            return self.BOTH_COLOR
+        if types == {'流用'}:
+            return self.REUSE_COLOR
+        if types == {'RevUp'}:
+            return self.REVUP_COLOR
+        return self.ROOT_COLOR
 
     def get_edges(self):
         """
