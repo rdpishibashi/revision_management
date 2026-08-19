@@ -1,5 +1,9 @@
 """
 Spec regression: 2026-08-06, ノード色を入力エッジの種類で決める仕様
+2026-08-20 更新: 流用とRevUp両方の入力エッジを持つノードは流用エッジ自体が
+削除される仕様に変更されたため（test_reuse_edge_deleted_when_both_present.py
+参照）、「両方」の色分類（旧 light yellow）は発生しなくなった。本ファイルの
+受入条件からも該当項目を削除。
 
 受入条件（ユーザーとの確認内容の要約）:
 - 入力エッジ（矢印）を1つも受け取らないノード（ROOTノード、または親を持たない
@@ -7,12 +11,10 @@ Spec regression: 2026-08-06, ノード色を入力エッジの種類で決める
 - 流用エッジのみを受け取るノードは light green (#90EE90)
 - RevUpエッジのみを受け取るノード（台帳に明示された行・推測された破線エッジの
   いずれでもよい）は light blue (#ADD8E6)
-- 流用エッジとRevUpエッジの両方を受け取るノードは light yellow (#FFFFE0)
 
 境界:
 - 色はノード自身の行が持つ Relation 属性ではなく、そのノードへの入力エッジの
-  種類の集合で決まる（同じ図番でも、流用の実線と推測RevUpの破線を同時に
-  受け取る場合は「両方」扱いになる）
+  種類の集合で決まる
 """
 import sys
 import os
@@ -45,9 +47,10 @@ def test_node_receiving_only_reuse_edge_is_light_green():
     assert builder.get_node_color('EE3273-608-34A') == GraphBuilder.REUSE_COLOR
 
 
-def test_node_receiving_both_reuse_and_inferred_revup_edges_is_light_yellow():
+def test_node_with_both_reuse_and_inferred_revup_keeps_only_revup_color():
     # 統合図面管理台帳.xlsx 相当のケース: 34C は台帳明記の流用（26D->34C）と、
-    # 34Bが存在しないために推測される破線RevUp（34A->34C）の両方を受け取る
+    # 34Bが存在しないために推測される破線RevUp（34A->34C）の両方を受け取るが、
+    # 流用エッジは削除されるため RevUp のみの色になる
     df = pd.DataFrame([
         {'Child': 'EE3273-608-34A', 'Parent': 'EE3273-608-26D', 'Relation': '流用'},
         {'Child': 'EE3273-608-34C', 'Parent': 'EE3273-608-26D', 'Relation': '流用'},
@@ -58,7 +61,8 @@ def test_node_receiving_both_reuse_and_inferred_revup_edges_is_light_yellow():
     edges = builder.get_edges()
 
     assert ('EE3273-608-34A', 'EE3273-608-34C', True) in edges  # 前提確認: 推測破線
-    assert builder.get_node_color('EE3273-608-34C') == GraphBuilder.BOTH_COLOR
+    assert ('EE3273-608-26D', 'EE3273-608-34C', False) not in edges  # 流用エッジは削除される
+    assert builder.get_node_color('EE3273-608-34C') == GraphBuilder.REVUP_COLOR
     # 34D は明示RevUpのみを受け取る
     assert builder.get_node_color('EE3273-608-34D') == GraphBuilder.REVUP_COLOR
 

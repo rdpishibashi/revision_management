@@ -236,6 +236,8 @@ def render_graphviz(data):
             st.error(f"PDF生成中にエラーが発生しました: {e}")
             st.warning("Graphviz本体が正しくインストールされ、PATHが通っているか確認してください。")
 
+    return builder
+
 
 def render_pyvis(data):
     """Pyvisを使用してインタラクティブなグラフを描画"""
@@ -320,6 +322,8 @@ def render_pyvis(data):
     except:
         pass
 
+    return builder
+
 
 # ファイルがアップロードされた場合のみ処理を実行
 if uploaded_file is not None:
@@ -343,13 +347,15 @@ if uploaded_file is not None:
         if not data.empty:
             # 選択されたエンジンに応じてグラフを描画
             if graph_engine == "インタラクティブ":
-                render_pyvis(data)
+                builder = render_pyvis(data)
             else:
-                render_graphviz(data)
+                builder = render_graphviz(data)
 
             # 台帳データをグラフの下に移動し、expanderで折りたたみ可能にする
+            # （流用とRevUp両方の入力エッジを持つノードについては、削除された
+            # 流用行をグラフと同様に非表示にする）
             with st.expander("### 図番親子関係台帳データを見る（クリックで開閉）"):
-                st.dataframe(data)
+                st.dataframe(builder.get_display_data())
 
         st.write("---")
 

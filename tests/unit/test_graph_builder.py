@@ -161,8 +161,9 @@ class TestInferredRevUpEdgesAreDashed:
 
 class TestGetNodeColor:
     """get_node_color(): ノードへの入力エッジの種類（流用/RevUp）の組み合わせで色を決める。
-    入力エッジなし(ROOT/独立新規ノード)=白、流用のみ=light green、RevUpのみ=light blue、
-    両方=light yellow。"""
+    入力エッジなし(ROOT/独立新規ノード)=白、流用のみ=light green、RevUpのみ=light blue。
+    流用とRevUp両方を受け取るノードは流用エッジが削除されるため（get_edges()参照）、
+    「両方」の色分類自体が発生しない。"""
 
     def test_root_placeholder_node_is_white(self):
         rows = [
@@ -202,9 +203,10 @@ class TestGetNodeColor:
         builder, _, _ = build(rows)
         assert builder.get_node_color('EE1000-001-01C') == GraphBuilder.REVUP_COLOR
 
-    def test_reuse_and_explicit_revup_both_incoming_is_light_yellow(self):
+    def test_reuse_edge_deleted_when_explicit_revup_also_present(self):
         # Same node receives an explicit 流用 edge from one parent and an
-        # explicit RevUp edge from a different parent.
+        # explicit RevUp edge from a different parent -> 流用 edge is deleted,
+        # only the RevUp edge (and color) remain.
         rows = [
             {'Child': 'EE1000-001-01B', 'Parent': 'EE9999-999-99Z', 'Relation': '流用'},
             {'Child': 'EE1000-001-01B', 'Parent': 'EE1000-001-01A', 'Relation': 'RevUp'},
@@ -212,19 +214,41 @@ class TestGetNodeColor:
         df = pd.DataFrame(rows)
         builder = GraphBuilder(df, ['Relation'])
         builder.build()
-        assert builder.get_node_color('EE1000-001-01B') == GraphBuilder.BOTH_COLOR
+        edges = builder.get_edges()
+        assert ('EE9999-999-99Z', 'EE1000-001-01B', False) not in edges
+        assert ('EE1000-001-01A', 'EE1000-001-01B', False) in edges
+        assert builder.get_node_color('EE1000-001-01B') == GraphBuilder.REVUP_COLOR
 
-    def test_reuse_and_inferred_revup_both_incoming_is_light_yellow(self):
+    def test_reuse_edge_deleted_when_inferred_revup_also_present(self):
         # OVERVIEW.md example: 34C has an explicit 流用 edge from 26D, and
-        # (with 34B absent) an inferred dashed RevUp edge from 34A.
+        # (with 34B absent) an inferred dashed RevUp edge from 34A -> the
+        # explicit 流用 edge is deleted, leaving only the inferred RevUp edge.
         rows = [
             {'Child': 'EE3273-608-34A', 'Parent': 'EE3273-608-26D', 'Relation': '流用'},
             {'Child': 'EE3273-608-34C', 'Parent': 'EE3273-608-26D', 'Relation': '流用'},
         ]
         builder, _, _ = build(rows)
         edges = builder.get_edges()
-        assert ('EE3273-608-34A', 'EE3273-608-34C', True) in edges  # 前提確認
-        assert builder.get_node_color('EE3273-608-34C') == GraphBuilder.BOTH_COLOR
+        assert ('EE3273-608-26D', 'EE3273-608-34C', False) not in edges
+        assert ('EE3273-608-34A', 'EE3273-608-34C', True) in edges
+        assert builder.get_node_color('EE3273-608-34C') == GraphBuilder.REVUP_COLOR
+
+    def test_all_reuse_edges_deleted_when_multiple_reuse_parents_and_revup(self):
+        # A child with two explicit 流用 parents and one explicit RevUp parent
+        # loses both 流用 edges, keeping only the RevUp edge.
+        rows = [
+            {'Child': 'EE1000-001-01C', 'Parent': 'EE9999-999-99Z', 'Relation': '流用'},
+            {'Child': 'EE1000-001-01C', 'Parent': 'EE8888-888-88Y', 'Relation': '流用'},
+            {'Child': 'EE1000-001-01C', 'Parent': 'EE1000-001-01B', 'Relation': 'RevUp'},
+        ]
+        df = pd.DataFrame(rows)
+        builder = GraphBuilder(df, ['Relation'])
+        builder.build()
+        edges = builder.get_edges()
+        assert ('EE9999-999-99Z', 'EE1000-001-01C', False) not in edges
+        assert ('EE8888-888-88Y', 'EE1000-001-01C', False) not in edges
+        assert ('EE1000-001-01B', 'EE1000-001-01C', False) in edges
+        assert builder.get_node_color('EE1000-001-01C') == GraphBuilder.REVUP_COLOR
 
     def test_unknown_node_id_defaults_to_root_color(self):
         rows = [
@@ -232,6 +256,43 @@ class TestGetNodeColor:
         ]
         builder, _, _ = build(rows)
         assert builder.get_node_color('EE9999-999-99Z') == GraphBuilder.ROOT_COLOR
+
+
+class TestGetDisplayData:
+    """get_display_data(): 削除された流用接続の台帳行を、表示用データから除外する。
+    グラフ描画・ノード属性が参照する self.data 自体は変更しない。"""
+
+    def test_deleted_reuse_row_is_excluded(self):
+        rows = [
+            {'Child': 'EE3273-608-34A', 'Parent': 'EE3273-608-26D', 'Relation': '流用'},
+            {'Child': 'EE3273-608-34C', 'Parent': 'EE3273-608-26D', 'Relation': '流用'},
+        ]
+        builder, _, _ = build(rows)
+        display_data = builder.get_display_data()
+        remaining_pairs = set(zip(display_data['Parent'], display_data['Child']))
+        assert ('EE3273-608-26D', 'EE3273-608-34C') not in remaining_pairs
+        assert ('EE3273-608-26D', 'EE3273-608-34A') in remaining_pairs
+
+    def test_no_deletion_returns_all_rows_unchanged(self):
+        rows = [
+            {'Child': 'EE2000-001-01A', 'Parent': 'EE1000-001-01A', 'Relation': '流用'},
+        ]
+        builder, _, _ = build(rows)
+        display_data = builder.get_display_data()
+        assert len(display_data) == len(builder.data)
+
+    def test_revup_row_for_the_same_child_is_kept(self):
+        rows = [
+            {'Child': 'EE1000-001-01B', 'Parent': 'EE9999-999-99Z', 'Relation': '流用'},
+            {'Child': 'EE1000-001-01B', 'Parent': 'EE1000-001-01A', 'Relation': 'RevUp'},
+        ]
+        df = pd.DataFrame(rows)
+        builder = GraphBuilder(df, ['Relation'])
+        builder.build()
+        display_data = builder.get_display_data()
+        remaining_pairs = set(zip(display_data['Parent'], display_data['Child']))
+        assert ('EE9999-999-99Z', 'EE1000-001-01B') not in remaining_pairs
+        assert ('EE1000-001-01A', 'EE1000-001-01B') in remaining_pairs
 
 
 class TestFindSearchComponentNodes:
