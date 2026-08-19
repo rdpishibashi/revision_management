@@ -122,7 +122,6 @@ class GraphBuilder:
     ROOT_COLOR = '#FFFFFF'  # White (no incoming 流用/RevUp edge: ROOT node or independent new drawing)
     REUSE_COLOR = '#C8F7C8'  # Lighter green (incoming 流用 edge only)
     REVUP_COLOR = '#D6ECF3'  # Lighter blue (incoming RevUp edge only, explicit or inferred)
-    BOTH_COLOR = '#FFFFE0'  # LightYellow (both 流用 and RevUp incoming edges)
 
     def __init__(self, data, dynamic_cols_for_display):
         """
@@ -199,21 +198,14 @@ class GraphBuilder:
                     'Relation': 'ROOT'
                 }
 
-    def _compute_incoming_relation_types(self):
+    def _row_relation_by_pair(self):
         """
-        Determine, for every node, which relation types its incoming edges
-        represent. A node with no incoming edge at all (ROOT placeholder node,
-        or an independent node whose own row has an empty Parent) has an empty
-        set. Inferred RevUp edges (dashed, from _infer_revision_up_edges())
-        always count as 'RevUp'. Explicit edges (solid) take their type from
-        that specific row's own Relation value ('流用' or 'RevUp'); any other
-        Relation value does not contribute a type. The per-row Relation is
-        looked up per (parent, child) pair rather than via the aggregated
-        node_dynamic_details, so a child with more than one explicit row is
-        still attributed correctly per edge.
+        Map every explicit (parent, child) pair recorded in the ledger to that
+        row's own Relation value.
 
         Returns:
-            dict: node id -> set of relation type strings among {'流用', 'RevUp'}
+            dict: (parent, child) tuple -> Relation string (may be '' if the
+                  Relation column is absent or blank)
         """
         row_relation_by_pair = {}
         for index, row in self.data.iterrows():
@@ -222,9 +214,27 @@ class GraphBuilder:
             if parent and child:
                 relation = str(row['Relation']).strip() if 'Relation' in row.index else ''
                 row_relation_by_pair[(parent, child)] = relation
+        return row_relation_by_pair
 
+    def _relation_types_from_edges(self, edges, row_relation_by_pair):
+        """
+        Determine, for every node, which relation types its incoming edges
+        (from the given edge list) represent. A node with no incoming edge at
+        all (ROOT placeholder node, or an independent node whose own row has
+        an empty Parent) has an empty set. Inferred RevUp edges (dashed) always
+        count as 'RevUp'. Explicit edges (solid) take their type from that
+        specific row's own Relation value ('流用' or 'RevUp'); any other
+        Relation value does not contribute a type.
+
+        Args:
+            edges: List of (parent, child, is_dashed) tuples
+            row_relation_by_pair: dict from _row_relation_by_pair()
+
+        Returns:
+            dict: node id -> set of relation type strings among {'流用', 'RevUp'}
+        """
         types = defaultdict(set)
-        for parent, child, is_dashed in self.get_edges():
+        for parent, child, is_dashed in edges:
             if is_dashed:
                 types[child].add('RevUp')
             else:
@@ -232,6 +242,18 @@ class GraphBuilder:
                 if relation in ('流用', 'RevUp'):
                     types[child].add(relation)
         return types
+
+    def _compute_incoming_relation_types(self):
+        """
+        Compute incoming relation types from get_edges() (i.e. after 流用 edges
+        that coincide with a RevUp connection on the same child have already
+        been dropped — see _reuse_pairs_to_delete()), so a child can no longer
+        end up classified as having both types.
+
+        Returns:
+            dict: node id -> set of relation type strings among {'流用', 'RevUp'}
+        """
+        return self._relation_types_from_edges(self.get_edges(), self._row_relation_by_pair())
 
     def get_node_color(self, node_id):
         """
@@ -244,19 +266,18 @@ class GraphBuilder:
             str: Hex color code
         """
         types = self.incoming_relation_types.get(node_id, set())
-        if types == {'流用', 'RevUp'}:
-            return self.BOTH_COLOR
         if types == {'流用'}:
             return self.REUSE_COLOR
         if types == {'RevUp'}:
             return self.REVUP_COLOR
         return self.ROOT_COLOR
 
-    def get_edges(self):
+    def _build_raw_edges(self):
         """
-        Extract all parent-child edges: edges explicitly recorded in the ledger
-        (solid), plus inferred RevUp edges for same-base, ascending-revision-letter
-        node pairs that have no explicit row connecting them (dashed).
+        Extract all parent-child edges before 流用/RevUp conflict resolution:
+        edges explicitly recorded in the ledger (solid), plus inferred RevUp
+        edges for same-base, ascending-revision-letter node pairs that have no
+        explicit row connecting them (dashed).
 
         Returns:
             list: List of (parent, child, is_dashed) tuples
@@ -274,6 +295,63 @@ class GraphBuilder:
             edges.append((parent, child, True))
 
         return edges
+
+    def _reuse_pairs_to_delete(self):
+        """
+        Determine which explicit 流用 (parent, child) pairs should be dropped:
+        a child that also receives at least one RevUp-type incoming edge
+        (explicit row or inferred dashed edge) keeps only that RevUp connection,
+        and loses every 流用 edge pointing to it.
+
+        Returns:
+            set: (parent, child) tuples to exclude from get_edges()/get_display_data()
+        """
+        raw_edges = self._build_raw_edges()
+        row_relation_by_pair = self._row_relation_by_pair()
+        raw_types = self._relation_types_from_edges(raw_edges, row_relation_by_pair)
+        return {
+            (parent, child)
+            for parent, child, is_dashed in raw_edges
+            if not is_dashed
+            and row_relation_by_pair.get((parent, child), '') == '流用'
+            and 'RevUp' in raw_types.get(child, set())
+        }
+
+    def get_edges(self):
+        """
+        Extract all parent-child edges (see _build_raw_edges()), with 流用
+        edges dropped for any child that also has a RevUp-type incoming edge
+        (see _reuse_pairs_to_delete()).
+
+        Returns:
+            list: List of (parent, child, is_dashed) tuples
+        """
+        to_delete = self._reuse_pairs_to_delete()
+        return [
+            (parent, child, is_dashed)
+            for parent, child, is_dashed in self._build_raw_edges()
+            if (parent, child) not in to_delete
+        ]
+
+    def get_display_data(self):
+        """
+        Return the ledger data for display, with rows corresponding to deleted
+        流用 connections (see _reuse_pairs_to_delete()) removed. Node attributes
+        used for graph rendering (node_dynamic_details, root-node detection)
+        are unaffected — this only filters what's shown in the raw ledger table.
+
+        Returns:
+            DataFrame: self.data, minus rows whose (Parent, Child) pair is a
+                       deleted 流用 connection
+        """
+        to_delete = self._reuse_pairs_to_delete()
+        if not to_delete:
+            return self.data
+        keep_mask = self.data.apply(
+            lambda row: (str(row['Parent']).strip(), str(row['Child']).strip()) not in to_delete,
+            axis=1
+        )
+        return self.data[keep_mask]
 
     def _infer_revision_up_edges(self, explicit_pairs):
         """
