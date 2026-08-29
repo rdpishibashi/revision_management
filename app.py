@@ -138,7 +138,7 @@ def load_data(file_object):
 
 def render_graphviz(data):
     """Graphvizを使用してグラフを描画"""
-    st.write("### 図番親子関係グラフ（固定画像）")
+    st.write("図番親子関係グラフ（固定画像）")
 
     # Graphvizのグラフオブジェクトを作成
     # 日本語表示のためにフォントを指定
@@ -206,7 +206,7 @@ def render_graphviz(data):
 
         # PDFダウンロードボタンをグラフの下に配置
         st.write("---")
-        st.write("#### 図番親子関係グラフをPDFでダウンロード")
+        st.write("図番親子関係グラフをPDFでダウンロード")
         st.info("PDFは拡大しても鮮明な表示が可能です。")
 
         try:
@@ -241,7 +241,7 @@ def render_graphviz(data):
 
 def render_pyvis(data):
     """Pyvisを使用してインタラクティブなグラフを描画"""
-    st.write("### 図番親子関係グラフ（インタラクティブ）")
+    st.write("図番親子関係グラフ（インタラクティブ）")
 
     # Use GraphBuilder to extract common logic
     dynamic_cols_for_display = [col for col in data.columns if col not in ['Child', 'Parent']]
@@ -354,7 +354,7 @@ if uploaded_file is not None:
             # 台帳データをグラフの下に移動し、expanderで折りたたみ可能にする
             # （流用とRevUp両方の入力エッジを持つノードについては、削除された
             # 流用行をグラフと同様に非表示にする）
-            with st.expander("### 図番親子関係台帳データを見る（クリックで開閉）"):
+            with st.expander("図番親子関係台帳データを見る（クリックで開閉）"):
                 st.dataframe(builder.get_display_data())
 
         st.write("---")
