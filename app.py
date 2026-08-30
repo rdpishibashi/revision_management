@@ -10,7 +10,7 @@ import platform
 
 # Import custom utilities
 from utils.formatters import format_hover_text
-from utils.graph_builder import GraphBuilder, normalize_parent_value, find_search_component_nodes, compute_edge_curvature
+from utils.graph_builder import GraphBuilder, normalize_parent_value, find_search_component_nodes, compute_edge_curvature, select_data_sheet
 
 # ページのレイアウトをワイドに設定
 st.set_page_config(layout="wide")
@@ -86,9 +86,18 @@ uploaded_file = st.file_uploader(
 def load_data(file_object):
     """
     アップロードされたExcelファイルオブジェクトからデータを読み込み、DataFrameとして返す。
+
+    複数シートがある場合、読み込むシートは select_data_sheet() が選ぶ
+    （"Master"シートを最優先、無ければChild/Parent列を持つ最初のシート）。
     """
     try:
-        df = pd.read_excel(file_object)
+        excel_file = pd.ExcelFile(file_object)
+        sheet_name = select_data_sheet(excel_file)
+        if sheet_name is None:
+            # 該当シートが無い場合は先頭シートにフォールバックし、
+            # 既存のカラム欠落チェック（下記）でエラーを出す。
+            sheet_name = excel_file.sheet_names[0]
+        df = excel_file.parse(sheet_name)
 
         # 必須カラムを定義 (A列, B列に相当)
         fixed_columns = ['Child', 'Parent']
