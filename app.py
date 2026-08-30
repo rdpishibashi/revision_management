@@ -60,14 +60,9 @@ search_query = st.sidebar.text_input(
     help="入力した文字列を含む図番が属するツリーのみを表示します（部分一致・大文字小文字を区別しません）。空欄の場合は全体を表示します。"
 )
 
-# デバッグ情報（フォント設定を表示）
-with st.sidebar.expander("ℹ️ システム情報", expanded=False):
-    st.text(f"OS: {platform.system()}")
-    st.text(f"使用フォント: {JAPANESE_FONT}")
-
 # アプリケーションのタイトルを設定
 st.title("図番親子関係グラフ")
-st.write("図番親子関係台帳をアップロードして図番の親子関係グラフを表示します。")
+st.write("図番管理台帳をアップロードして図番の親子関係グラフを表示します。")
 
 # エンジンに応じた説明を表示
 if graph_engine == "インタラクティブ":
@@ -77,7 +72,7 @@ else:
 
 # 1. ファイルアップローダーの設置
 uploaded_file = st.file_uploader(
-    "図番親子関係台帳Excelファイル (.xlsx) をここにドラッグ＆ドロップするか、クリックして選択してください",
+    "図番管理台帳 (Excelファイル) をここにドラッグ＆ドロップするか、クリックして選択してください",
     type=["xlsx"]
 )
 
@@ -363,7 +358,7 @@ if uploaded_file is not None:
             # 台帳データをグラフの下に移動し、expanderで折りたたみ可能にする
             # （流用とRevUp両方の入力エッジを持つノードについては、削除された
             # 流用行をグラフと同様に非表示にする）
-            with st.expander("図番親子関係台帳データを見る（クリックで開閉）"):
+            with st.expander("図番管理台帳データを見る（クリックで開閉）"):
                 st.dataframe(builder.get_display_data())
 
         st.write("---")
@@ -372,4 +367,4 @@ if uploaded_file is not None:
         st.warning("アップロードされたファイルからデータを読み込めませんでした。")
 
 else:
-    st.info("図番親子関係台帳（Excelファイル）をアップロードすると、図番親子関係グラフを表示します。")
+    st.info("図番管理台帳（Excelファイル）をアップロードすると、図番親子関係グラフを表示します。")
