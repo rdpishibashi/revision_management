@@ -3,6 +3,7 @@ Unit tests for utils/graph_builder.py
 """
 import sys
 import os
+import io
 import pandas as pd
 import pytest
 
@@ -13,10 +14,21 @@ from utils.graph_builder import (
     normalize_parent_value,
     find_search_component_nodes,
     compute_edge_curvature,
+    select_data_sheet,
     BASE_EDGE_ROUNDNESS,
     EDGE_ROUNDNESS_STEP,
     MAX_EDGE_ROUNDNESS,
 )
+
+
+def _make_excel_file(sheets):
+    """sheets: dict of {sheet_name: pd.DataFrame} -> pd.ExcelFile (in-memory)."""
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+        for name, df in sheets.items():
+            df.to_excel(writer, sheet_name=name, index=False)
+    buf.seek(0)
+    return pd.ExcelFile(buf)
 
 
 class TestNormalizeParentValue:
@@ -419,6 +431,56 @@ class TestComputeEdgeCurvature:
         edges = [('P', 'A', True)]
         result = compute_edge_curvature(edges)
         assert result[0][2] is True
+
+
+class TestSelectDataSheet:
+    """select_data_sheet(): Masterシート最優先 -> Child/Parent列を持つ最初のシート -> None"""
+
+    _summary_df = pd.DataFrame({'エンティティ統計': ['削除図形 総数'], 'Unnamed: 1': [10]})
+    _data_df = pd.DataFrame({'Child': ['B1'], 'Parent': ['A1']})
+
+    def test_master_sheet_wins_even_when_another_sheet_has_child_parent_columns(self):
+        excel_file = _make_excel_file({
+            'Master': self._data_df,
+            'OldData': self._data_df,
+        })
+        assert select_data_sheet(excel_file) == 'Master'
+
+    def test_master_sheet_matched_case_insensitively(self):
+        for name in ['master', 'MASTER', 'MaStEr']:
+            excel_file = _make_excel_file({name: self._data_df, 'Summary': self._summary_df})
+            assert select_data_sheet(excel_file) == name
+
+    def test_master_sheet_wins_regardless_of_position(self):
+        excel_file = _make_excel_file({
+            'Summary': self._summary_df,
+            'Drawing List': self._summary_df,
+            'Master': self._data_df,
+        })
+        assert select_data_sheet(excel_file) == 'Master'
+
+    def test_falls_back_to_first_child_parent_sheet_when_no_master(self):
+        excel_file = _make_excel_file({
+            'Summary': self._summary_df,
+            'Diff List': self._data_df,
+            'Drawing List': self._summary_df,
+        })
+        assert select_data_sheet(excel_file) == 'Diff List'
+
+    def test_falls_back_to_earliest_of_multiple_child_parent_sheets(self):
+        excel_file = _make_excel_file({
+            'Summary': self._summary_df,
+            'Sheet1': self._data_df,
+            'Sheet2': self._data_df,
+        })
+        assert select_data_sheet(excel_file) == 'Sheet1'
+
+    def test_returns_none_when_no_master_and_no_child_parent_sheet(self):
+        excel_file = _make_excel_file({
+            'Summary': self._summary_df,
+            'Drawing List': self._summary_df,
+        })
+        assert select_data_sheet(excel_file) is None
 
 
 if __name__ == '__main__':

@@ -25,6 +25,37 @@ def normalize_parent_value(value):
     return value
 
 
+def select_data_sheet(excel_file):
+    """
+    Pick which sheet of a multi-sheet Excel workbook to read as the
+    Child/Parent ledger data.
+
+    Priority:
+      1. A sheet named "Master" (case-insensitive, surrounding whitespace
+         ignored) wins outright, regardless of its columns.
+      2. Otherwise, the first sheet (in workbook order) that has both a
+         'Child' and a 'Parent' column.
+      3. If neither is found, return None so the caller can fall back to its
+         existing single-sheet error path (missing required columns).
+
+    Args:
+        excel_file: pd.ExcelFile
+
+    Returns:
+        str or None: the chosen sheet name, or None if no suitable sheet exists
+    """
+    for name in excel_file.sheet_names:
+        if name.strip().lower() == 'master':
+            return name
+
+    for name in excel_file.sheet_names:
+        header = excel_file.parse(name, nrows=0)
+        if 'Child' in header.columns and 'Parent' in header.columns:
+            return name
+
+    return None
+
+
 BASE_EDGE_ROUNDNESS = 0.2  # roundness of the first pair of edges from a shared source
 EDGE_ROUNDNESS_STEP = 0.18  # roundness added per additional pair of edges from that source
 MAX_EDGE_ROUNDNESS = 0.8  # cap, so edges don't curve into an unreadable loop
